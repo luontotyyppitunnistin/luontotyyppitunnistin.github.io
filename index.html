@@ -109,6 +109,13 @@
   .hint { color: var(--muted); font-size: 0.9rem; }
   #error { color: var(--err); margin-top: 12px; }
 
+  /* ---- "how it works" dropdown ---- */
+  .how { margin-top: var(--gap); }
+  .how-toggle { display: inline-flex; align-items: center; gap: 12px; }
+  .how-toggle svg { flex: none; transition: transform 0.2s ease-in-out; }
+  .how-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .how-body { margin-top: 16px; max-width: 70ch; white-space: pre-line; }
+
   #results { margin-top: var(--gap); }
   .views { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--gap); }
   .views canvas { width: 100%; height: auto; border-radius: 8px; display: block; background: var(--line); }
@@ -180,6 +187,14 @@
     <div id="error" role="alert" hidden></div>
   </section>
 
+  <section class="card how">
+    <button id="how-toggle" class="link how-toggle" type="button" aria-expanded="false" aria-controls="how-body">
+      <span data-text="howTitle"></span>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div id="how-body" class="how-body" data-text="howBody" data-rich hidden></div>
+  </section>
+
   <section id="results" hidden>
     <div class="views">
       <div class="card">
@@ -223,6 +238,19 @@ const TEXT = {
     "Klikkaa luokan nimeä kummassa tahansa taulukossa luokkakohtaisia vaikutuskarttoja varten.",
   footer: "Ennusteet ovat kokeellisia. Kuvat analysoidaan omalla palvelimellaan, eikä niitä tallenneta tai lähetetä kolmansille osapuolille.",
 
+  // How it works (dropdown)
+  howTitle: "Kuinka tunnistin toimii?",
+  howBody:
+    "Tunnistin käsittelee kuvan Sykessä kehitetyllä konenäköalgoritmilla, joka ensiksi " +
+    "jakaa kuvan pienempiin ruutuihin ja laskee jokaiselle ruudulle ns. _piirrevektorin_. Piirrevektori " +
+    "on kompakti esitysmuoto ruudun visuaalisesta sisällöstä suhteessa koko kuvaan. " +
+    "Kun piirrevektorit on laskettu, ne syötetään luokittelumallille, " +
+    "joka on sovitettu suuren kuvapankin avulla tunnistamaan korrelaatioita visuaalisten piirteiden ja " +
+    "luontotyyppien välillä. Kuvan luontotyypiksi valitaan se luokka, joka sisältää eniten visuaalisia piirteitä, " +
+    "jotka parhaiten edustavat kyseistä luokkaa.\n\n" +
+    "Jokaiselle luokalle voidaan esittää _vaikutuskartta_ kuvanruutujen merkityksestä kyseisen luokan ennustamiseen.",
+
+
   // Upload
   dropAria: "Valitse kuva tai pudota se tähän",
   dropTitle: "Pudota kuva tähän tai valitse napsauttamalla",
@@ -257,7 +285,21 @@ const TEXT = {
   serverError: "Palvelinvirhe (HTTP ",               // + status + ")"
 };
 
-for (const el of document.querySelectorAll("[data-text]")) el.textContent = TEXT[el.dataset.text];
+// data-rich elements: _word_ becomes <em>word</em> (built as DOM nodes, so no HTML is ever parsed).
+function renderRich(el, text) {
+  el.replaceChildren(...text.split(/_([^_]+)_/).map((part, i) => {
+    if (i % 2 === 0) return part;
+    const em = document.createElement("em");
+    em.textContent = part;
+    return em;
+  }));
+}
+
+for (const el of document.querySelectorAll("[data-text]")) {
+  const text = TEXT[el.dataset.text];
+  if ("rich" in el.dataset) renderRich(el, text);
+  else el.textContent = text;
+}
 for (const el of document.querySelectorAll("[data-aria-label]")) el.setAttribute("aria-label", TEXT[el.dataset.ariaLabel]);
 </script>
 
@@ -277,6 +319,7 @@ const els = {
   results: $("results"), overlay: $("overlay"), selected: $("selected"),
   selectedTitle: $("selected-title"), legend: $("legend"),
   tPred: $("t-pred"), tAll: $("t-all"),
+  howToggle: $("how-toggle"), howBody: $("how-body"),
 };
 
 const state = {
@@ -563,6 +606,11 @@ for (const ev of ["dragleave", "drop"]) {
 }
 els.drop.addEventListener("drop", (e) => loadImage(e.dataTransfer.files[0]));
 els.predict.addEventListener("click", predict);
+els.howToggle.addEventListener("click", () => {
+  const open = els.howToggle.getAttribute("aria-expanded") !== "true";
+  els.howToggle.setAttribute("aria-expanded", String(open));
+  els.howBody.hidden = !open;
+});
 
 setStatus(TEXT.connecting, "busy");
 updatePredictButton();

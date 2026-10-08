@@ -1,58 +1,77 @@
 <!doctype html>
-<html lang="en">
+<html lang="fi">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#005854">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap">
 <title>Luontotyyppitunnistin</title>
-<meta name="description" content="Interpretable classification of Finnish habitat types from photos, with attribution maps showing which image regions drove each prediction.">
+<meta name="description" content="Tunnistaa luontotyypin valokuvasta.">
 <style>
   :root {
-    --bg: #f6f7f4;
-    --surface: #ffffff;
-    --text: #1d2420;
-    --muted: #5d6a62;
-    --border: #d9ded8;
-    --accent: #2f7a4d;
+    color-scheme: light;
+
+    --bg: #ffffff;
+    --surface: #edece9;         /* vaaleanharmaa, cards */
+    --surface-blue: #CFE9EA;    /* vaaleansininen */
+    --text: #005854;            /* tummanvihreä: text, headings, links */
+    --muted: #575756;           /* tummanharmaa */
+    --line: rgba(0, 88, 84, 0.2);
+    --accent: #005854;
+    --accent-hover: #00706b;
     --accent-text: #ffffff;
-    --accent-soft: #e3f0e8;
-    --warn: #a15c00;
-    --err: #b3261e;
-    --bar: #8fbf9f;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #141815;
-      --surface: #1d231f;
-      --text: #e6ebe7;
-      --muted: #97a39b;
-      --border: #333c36;
-      --accent: #5db97f;
-      --accent-text: #0c1a11;
-      --accent-soft: #23352a;
-      --warn: #e0a24a;
-      --err: #f2877f;
-      --bar: #3f7a56;
-    }
+    --accent-soft: #C7E3D2;     /* vaaleanvihreä */
+    --warn: #bb5b0f;            /* okra */
+    --warn-bg: #FED992;         /* vaaleankeltainen */
+    --err: #9E3B2A;             /* tummanpunainen, darkened for contrast on light blue */
+    --err-bg: #FCD9C9;          /* vaaleanpunainen */
+    --link-hover: #B34733;      /* tummanpunainen */
+    --bar: #84C497;
+    --focus: #006085;           /* tummansininen */
+    --gap: 30px;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* .drop/.picked set display, which would otherwise beat [hidden] */
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   body {
-    margin: 0;
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
     background: var(--bg);
     color: var(--text);
-    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 16px/1.5 "Poppins", Arial, sans-serif;
   }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
-  h1 { font-size: 1.6rem; margin: 0 0 4px; }
-  h2 { font-size: 1.05rem; margin: 0 0 8px; }
-  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 70ch; }
+  .wrap { max-width: 1110px; margin: 0 auto; padding: 0 16px; }
+  a { color: inherit; }
+  a:hover, button.link:hover { text-decoration-color: var(--link-hover); }
+  h1, h2 { font-weight: 600; line-height: 1.2; }
+
+  /* ---- hero ---- */
+  .hero { position: relative; background: var(--accent); color: #ffffff; }
+  .hero-inner { padding-top: 48px; padding-bottom: 48px; }
+  .hero-text { max-width: 720px; }
+  h1 { font-size: 2rem; margin: 0 0 24px; }
+  p.lead { margin: 0; }
+
+  main { flex: 1; width: 100%; max-width: 1110px; margin: 0 auto; padding: 40px 16px 64px; }
+  h2 { font-size: 1.375rem; margin: 0 0 12px; }
+
+  .arrow-link {
+    display: inline-flex; align-items: center; font-weight: 600; text-decoration: none;
+  }
+  .arrow-link svg { flex: none; margin-right: 12px; transition: transform 0.2s ease-in-out; }
+  .arrow-link:hover, .arrow-link:focus-visible { text-decoration: underline; text-decoration-color: var(--link-hover); }
+  .arrow-link:hover svg, .arrow-link:focus-visible svg { transform: translateX(5px); }
+  svg.icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
   .status {
     display: inline-flex; align-items: center; gap: 8px;
-    padding: 6px 12px; border-radius: 999px;
-    background: var(--accent-soft); font-size: 0.9rem; margin-bottom: 16px;
+    padding: 6px 14px; border-radius: 999px; border: 1px solid transparent;
+    background: var(--accent-soft); font-size: 0.9rem; margin-bottom: var(--gap);
   }
-  .status.warn { color: var(--warn); }
-  .status.err { color: var(--err); }
+  .status.warn { background: var(--warn-bg); border-color: var(--warn); }
+  .status.err { background: var(--err-bg); border-color: var(--err); }
   .spinner {
     width: 14px; height: 14px; border-radius: 50%;
     border: 2px solid currentColor; border-right-color: transparent;
@@ -61,76 +80,89 @@
   .status:not(.busy) .spinner, button:not(.busy) .spinner { display: none; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 16px;
-  }
+  .card { background: var(--surface); border-radius: 16px; padding: 24px 32px 32px; }
+  .card.upload { background: var(--surface-blue); }
   .drop {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 12px; min-height: 160px; text-align: center;
-    border: 2px dashed var(--border); border-radius: 12px; padding: 16px;
-    cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    border: 2px dashed var(--accent); border-radius: 12px; padding: 16px;
+    cursor: pointer; transition: background 0.15s;
   }
-  .drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+  .drop:hover, .drop.over { background: rgba(255, 255, 255, 0.6); }
   .drop small { color: var(--muted); }
-  .picked { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .picked { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
   .picked canvas { max-width: 220px; max-height: 160px; width: auto; height: auto; border-radius: 8px; }
 
   button.primary {
     display: inline-flex; align-items: center; gap: 8px;
     background: var(--accent); color: var(--accent-text); border: 0;
-    padding: 10px 20px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;
+    padding: 12px 24px; border-radius: 4px; font: inherit; font-weight: 600; cursor: pointer;
   }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); }
   button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
   button.link {
-    background: none; border: 0; padding: 0; font: inherit;
-    color: var(--accent); cursor: pointer; text-decoration: underline;
+    background: none; border: 0; padding: 0; font: inherit; font-weight: 600;
+    color: var(--text); cursor: pointer; text-decoration: none;
   }
-  .actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  button:focus-visible, .drop:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .actions { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
   .hint { color: var(--muted); font-size: 0.9rem; }
   #error { color: var(--err); margin-top: 12px; }
 
-  #results { margin-top: 24px; }
-  .views { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-  .views canvas { width: 100%; height: auto; border-radius: 8px; display: block; background: var(--border); }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 0.88rem; }
+  #results { margin-top: var(--gap); }
+  .views { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--gap); }
+  .views canvas { width: 100%; height: auto; border-radius: 8px; display: block; background: var(--line); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 0.88rem; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
-  .tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+  .tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--gap); margin-top: var(--gap); }
 
   .scroll { max-height: 460px; overflow: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 600; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
+  th { position: sticky; top: 0; background: var(--surface); font-weight: 600; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   tbody tr { cursor: pointer; }
-  tbody tr:hover { background: var(--accent-soft); }
-  tbody tr.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
-  tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  tbody tr:hover { background: #ffffff; }
+  tbody tr.sel { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+  tbody tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
   .pbar { position: relative; min-width: 90px; }
-  .pbar i { position: absolute; inset: 3px auto 3px 0; background: var(--bar); opacity: 0.45; border-radius: 3px; }
+  .pbar i { position: absolute; inset: 3px auto 3px 0; background: var(--bar); opacity: 0.6; border-radius: 3px; }
   .pbar b { position: relative; font-weight: 400; padding-left: 4px; }
   .empty { color: var(--muted); padding: 8px; }
-  footer { margin-top: 32px; color: var(--muted); font-size: 0.85rem; }
+
+  /* ---- footer ---- */
+  .footer { margin-top: auto; background: var(--accent); color: #ffffff; }
+  .footer-inner {
+    padding-top: 32px; padding-bottom: 32px;
+  }
+  .footer p { margin: 0; max-width: 60ch; }
+
+  @media (max-width: 600px) {
+    .card { padding: 20px; }
+    h1 { font-size: 1.6rem; }
+  }
 </style>
 </head>
 <body>
+<header class="hero">
+  <div class="wrap hero-inner">
+    <div class="hero-text">
+      <h1>Luontotyyppitunnistin</h1>
+      <p class="lead" data-text="heroLead"></p>
+    </div>
+  </div>
+</header>
 <main>
-  <h1>Luontotyyppitunnistin</h1>
-  <p class="lead">
-    Upload a photo and get the most likely Finnish habitat types. The overlay shows which image regions
-    drove each prediction (DINOv2 patch features + a visual codebook). Click a class in either table to see where
-    it came from.
-  </p>
 
   <div id="status" class="status busy" role="status" aria-live="polite">
-    <span class="spinner"></span><span id="status-text">Connecting to the model server…</span>
+    <span class="spinner"></span><span id="status-text"></span>
   </div>
 
-  <section class="card">
-    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose or drop an image">
-      <strong>Drop an image here or click to choose</strong>
-      <small>JPEG, PNG or WebP. Large images are downscaled in your browser before upload.</small>
+  <section class="card upload">
+    <div id="drop" class="drop" tabindex="0" role="button" data-aria-label="dropAria">
+      <strong data-text="dropTitle"></strong>
+      <small data-text="dropHint"></small>
     </div>
     <input id="file" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" hidden>
     <div id="picked" class="picked" hidden>
@@ -138,9 +170,9 @@
       <div>
         <div class="actions">
           <button id="predict" class="primary" type="button">
-            <span class="spinner"></span><span id="predict-text">Predict</span>
+            <span class="spinner"></span><span id="predict-text"></span>
           </button>
-          <button id="change" class="link" type="button">Choose another image</button>
+          <button id="change" class="link arrow-link" type="button"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span data-text="changeImage"></span></button>
         </div>
         <p id="predict-hint" class="hint"></p>
       </div>
@@ -151,29 +183,83 @@
   <section id="results" hidden>
     <div class="views">
       <div class="card">
-        <h2>Attribution overlay (predicted classes)</h2>
+        <h2 data-text="overlayTitle"></h2>
         <canvas id="overlay"></canvas>
         <div id="legend" class="legend"></div>
       </div>
       <div class="card">
-        <h2 id="selected-title">Selected class attribution</h2>
+        <h2 id="selected-title" data-text="selectedTitle"></h2>
         <canvas id="selected"></canvas>
       </div>
     </div>
     <div class="tables">
       <div class="card">
-        <h2>Predicted habitats</h2>
+        <h2 data-text="predictedTitle"></h2>
         <div class="scroll"><table id="t-pred"></table></div>
       </div>
       <div class="card">
-        <h2>All classes</h2>
+        <h2 data-text="allTitle"></h2>
         <div class="scroll"><table id="t-all"></table></div>
       </div>
     </div>
   </section>
 
-  <footer>Predictions are experimental. Images are sent to a server for analysis and are not stored.</footer>
 </main>
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <p data-text="footer"></p>
+  </div>
+</footer>
+
+<script>
+// ======================================================================
+// TEKSTIT / UI TEXTS: edit the visible texts here.
+// (<title> and <meta name="description"> in <head> are separate.)
+// ======================================================================
+const TEXT = {
+  // Page
+  heroLead:
+    "Tulkitsee kuvasta todennäköisimmän luontotyypin ja näyttää mitkä alueet kuvasta vaikuttavat ennusteeseen. " +
+    "Klikkaa luokan nimeä kummassa tahansa taulukossa luokkakohtaisia vaikutuskarttoja varten.",
+  footer: "Ennusteet ovat kokeellisia. Kuvat analysoidaan omalla palvelimellaan, eikä niitä tallenneta tai lähetetä kolmansille osapuolille.",
+
+  // Upload
+  dropAria: "Valitse kuva tai pudota se tähän",
+  dropTitle: "Pudota kuva tähän tai valitse napsauttamalla",
+  dropHint: "JPEG, PNG tai WebP. Suuret kuvat pienennetään selaimessasi ennen lähetystä.",
+  changeImage: "Valitse toinen kuva",
+  predict: "Tunnista",
+  predicting: "Analysoidaan…",
+  modelStillLoading: "Mallia ladataan...",
+
+  // Results
+  overlayTitle: "Vaikutuskartta (ennustetut luokat)",
+  selectedTitle: "Valitun luokan vaikutuskartta",
+  predictedTitle: "Ennustetut luontotyypit",
+  allTitle: "Kaikki luokat",
+  colClass: "Luontotyyppi",
+  colProbability: "Todennäköisyys",
+  colThreshold: "Kynnysarvo",
+  noneAboveThreshold: "Mikään luokka ei ylittänyt kynnysarvoaan.",
+
+  // Server status
+  connecting: "Yhdistetään mallipalvelimeen…",
+  modelReady: "Malli valmis",
+  modelLoading: "Ladataan mallia…",
+  modelLoadingCanPick: " voit jo valita kuvan.",
+  modelLoadFailed: "Mallin lataus epäonnistui: ",   // + server error
+  serverRetrying: "Palvelimeen ei saada yhteyttä, yritetään uudelleen…",
+
+  // Errors
+  notAnImage: "Valitse kuvatiedosto.",
+  unreadableImage: "Kuvaa ei voitu lukea.",
+  serverUnreachable: "Palvelimeen ei saatu yhteyttä. Yritä uudelleen.",
+  serverError: "Palvelinvirhe (HTTP ",               // + status + ")"
+};
+
+for (const el of document.querySelectorAll("[data-text]")) el.textContent = TEXT[el.dataset.text];
+for (const el of document.querySelectorAll("[data-aria-label]")) el.setAttribute("aria-label", TEXT[el.dataset.ariaLabel]);
+</script>
 
 <script>
 "use strict";
@@ -215,19 +301,19 @@ async function pollStatus(attempt = 0) {
     if (!r.ok) throw new Error("HTTP " + r.status);
     const s = await r.json();
     if (s.error) {
-      setStatus("Model failed to load: " + s.error, "err");
+      setStatus(TEXT.modelLoadFailed + s.error, "err");
       return;
     }
     if (s.ready) {
       state.ready = true;
-      setStatus("Model ready", "");
+      setStatus(TEXT.modelReady, "");
       updatePredictButton();
       return;
     }
-    setStatus("Loading the model…" + (state.image ? "" : " you can already pick an image."), "busy");
+    setStatus(TEXT.modelLoading + (state.image ? "" : TEXT.modelLoadingCanPick), "busy");
     setTimeout(() => pollStatus(0), 1000);
   } catch (e) {
-    setStatus("Can't reach the server, retrying…", "warn busy");
+    setStatus(TEXT.serverRetrying, "warn busy");
     setTimeout(() => pollStatus(attempt + 1), Math.min(1000 * 2 ** attempt, 10000));
   }
 }
@@ -236,7 +322,7 @@ async function pollStatus(attempt = 0) {
 
 async function loadImage(file) {
   if (!file || !file.type.startsWith("image/")) {
-    showError("Please choose an image file.");
+    showError(TEXT.notAnImage);
     return;
   }
   showError("");
@@ -244,7 +330,7 @@ async function loadImage(file) {
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   } catch {
-    showError("Could not read that image.");
+    showError(TEXT.unreadableImage);
     return;
   }
   const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
@@ -268,10 +354,10 @@ async function loadImage(file) {
 function updatePredictButton() {
   els.predict.disabled = !state.image || state.busy;
   els.predict.classList.toggle("busy", state.busy);
-  els.predictText.textContent = state.busy ? "Analyzing…" : "Predict";
+  els.predictText.textContent = state.busy ? TEXT.predicting : TEXT.predict;
   els.predictHint.textContent =
     state.image && !state.ready && !state.busy
-      ? "The model is still loading. Predict will wait for it."
+      ? TEXT.modelStillLoading
       : "";
 }
 
@@ -302,7 +388,7 @@ async function predict() {
     if (!r.ok) {
       let detail = "";
       try { detail = (await r.json()).detail; } catch {}
-      throw new Error(detail || "Server error (HTTP " + r.status + ")");
+      throw new Error(detail || TEXT.serverError + r.status + ")");
     }
     const data = await r.json();
     for (const c of data.classes) c.maskData = decodeMask(c.mask);
@@ -310,7 +396,7 @@ async function predict() {
     state.ready = true;
     showResults();
   } catch (e) {
-    showError(e instanceof TypeError ? "Could not reach the server. Please try again." : e.message);
+    showError(e instanceof TypeError ? TEXT.serverUnreachable : e.message);
   } finally {
     state.busy = false;
     updatePredictButton();
@@ -388,7 +474,9 @@ function cell(text, cls) {
 function fillTable(table, rows, withThreshold) {
   table.replaceChildren();
   const head = table.createTHead().insertRow();
-  const cols = withThreshold ? ["Habitat", "Probability", "Threshold"] : ["Habitat", "Probability"];
+  const cols = withThreshold
+    ? [TEXT.colClass, TEXT.colProbability, TEXT.colThreshold]
+    : [TEXT.colClass, TEXT.colProbability];
   for (const name of cols) {
     const th = document.createElement("th");
     th.textContent = name;
@@ -399,7 +487,7 @@ function fillTable(table, rows, withThreshold) {
     const td = body.insertRow().insertCell();
     td.colSpan = cols.length;
     td.className = "empty";
-    td.textContent = "No class crossed its threshold.";
+    td.textContent = TEXT.noneAboveThreshold;
     return;
   }
   for (const c of rows) {
@@ -476,6 +564,8 @@ for (const ev of ["dragleave", "drop"]) {
 els.drop.addEventListener("drop", (e) => loadImage(e.dataTransfer.files[0]));
 els.predict.addEventListener("click", predict);
 
+setStatus(TEXT.connecting, "busy");
+updatePredictButton();
 pollStatus();
 </script>
 </body>

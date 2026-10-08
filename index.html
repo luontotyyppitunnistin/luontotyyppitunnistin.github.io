@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luontotyyppitunnistin</title>
+<meta name="description" content="Interpretable classification of Finnish habitat types from photos, with attribution maps showing which image regions drove each prediction.">
+<style>
+  :root {
+    --bg: #f6f7f4;
+    --surface: #ffffff;
+    --text: #1d2420;
+    --muted: #5d6a62;
+    --border: #d9ded8;
+    --accent: #2f7a4d;
+    --accent-text: #ffffff;
+    --accent-soft: #e3f0e8;
+    --warn: #a15c00;
+    --err: #b3261e;
+    --bar: #8fbf9f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141815;
+      --surface: #1d231f;
+      --text: #e6ebe7;
+      --muted: #97a39b;
+      --border: #333c36;
+      --accent: #5db97f;
+      --accent-text: #0c1a11;
+      --accent-soft: #23352a;
+      --warn: #e0a24a;
+      --err: #f2877f;
+      --bar: #3f7a56;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 70ch; }
+
+  .status {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--accent-soft); font-size: 0.9rem; margin-bottom: 16px;
+  }
+  .status.warn { color: var(--warn); }
+  .status.err { color: var(--err); }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid currentColor; border-right-color: transparent;
+    animation: spin 0.8s linear infinite; flex: none;
+  }
+  .status:not(.busy) .spinner, button:not(.busy) .spinner { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .drop {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; min-height: 160px; text-align: center;
+    border: 2px dashed var(--border); border-radius: 12px; padding: 16px;
+    cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  }
+  .drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+  .drop small { color: var(--muted); }
+  .picked { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .picked canvas { max-width: 220px; max-height: 160px; width: auto; height: auto; border-radius: 8px; }
+
+  button.primary {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--accent-text); border: 0;
+    padding: 10px 20px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
+  button.link {
+    background: none; border: 0; padding: 0; font: inherit;
+    color: var(--accent); cursor: pointer; text-decoration: underline;
+  }
+  .actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .hint { color: var(--muted); font-size: 0.9rem; }
+  #error { color: var(--err); margin-top: 12px; }
+
+  #results { margin-top: 24px; }
+  .views { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .views canvas { width: 100%; height: auto; border-radius: 8px; display: block; background: var(--border); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 0.88rem; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+
+  .scroll { max-height: 460px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--accent-soft); }
+  tbody tr.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .pbar { position: relative; min-width: 90px; }
+  .pbar i { position: absolute; inset: 3px auto 3px 0; background: var(--bar); opacity: 0.45; border-radius: 3px; }
+  .pbar b { position: relative; font-weight: 400; padding-left: 4px; }
+  .empty { color: var(--muted); padding: 8px; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Luontotyyppitunnistin</h1>
+  <p class="lead">
+    Upload a photo and get the most likely Finnish habitat types. The overlay shows which image regions
+    drove each prediction (DINOv2 patch features + a visual codebook). Click a class in either table to see where
+    it came from.
+  </p>
+
+  <div id="status" class="status busy" role="status" aria-live="polite">
+    <span class="spinner"></span><span id="status-text">Connecting to the model server…</span>
+  </div>
+
+  <section class="card">
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose or drop an image">
+      <strong>Drop an image here or click to choose</strong>
+      <small>JPEG, PNG or WebP. Large images are downscaled in your browser before upload.</small>
+    </div>
+    <input id="file" type="file" accept="image/*" hidden>
+    <div id="picked" class="picked" hidden>
+      <canvas id="preview"></canvas>
+      <div>
+        <div class="actions">
+          <button id="predict" class="primary" type="button">
+            <span class="spinner"></span><span id="predict-text">Predict</span>
+          </button>
+          <button id="change" class="link" type="button">Choose another image</button>
+        </div>
+        <p id="predict-hint" class="hint"></p>
+      </div>
+    </div>
+    <div id="error" role="alert" hidden></div>
+  </section>
+
+  <section id="results" hidden>
+    <div class="views">
+      <div class="card">
+        <h2>Attribution overlay (predicted classes)</h2>
+        <canvas id="overlay"></canvas>
+        <div id="legend" class="legend"></div>
+      </div>
+      <div class="card">
+        <h2 id="selected-title">Selected class attribution</h2>
+        <canvas id="selected"></canvas>
+      </div>
+    </div>
+    <div class="tables">
+      <div class="card">
+        <h2>Predicted habitats</h2>
+        <div class="scroll"><table id="t-pred"></table></div>
+      </div>
+      <div class="card">
+        <h2>All classes</h2>
+        <div class="scroll"><table id="t-all"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>Predictions are experimental. Images are sent to a server for analysis and are not stored.</footer>
+</main>
+
+<script>
+"use strict";
+
+const API = "https://mikkoim--habitat-codebook-api-api.modal.run";
+const MAX_SIDE = 1024;        // keep in sync with the server's MAX_IMAGE_SIDE
+const OVERLAY_ALPHA = 0.7;
+
+const $ = (id) => document.getElementById(id);
+const els = {
+  status: $("status"), statusText: $("status-text"),
+  drop: $("drop"), file: $("file"), picked: $("picked"), preview: $("preview"),
+  predict: $("predict"), predictText: $("predict-text"), predictHint: $("predict-hint"),
+  change: $("change"), error: $("error"),
+  results: $("results"), overlay: $("overlay"), selected: $("selected"),
+  selectedTitle: $("selected-title"), legend: $("legend"),
+  tPred: $("t-pred"), tAll: $("t-all"),
+};
+
+const state = {
+  ready: false,       // model loaded on the server
+  image: null,        // canvas holding the downscaled upload
+  busy: false,
+  data: null,         // last /predict response, masks decoded
+  base: null,         // ImageData of the image at response size
+  selected: null,     // selected class name
+};
+
+// ---------- server status: also wakes the Modal container ----------
+
+function setStatus(text, kind) {
+  els.statusText.textContent = text;
+  els.status.className = "status" + (kind ? " " + kind : "");
+}
+
+async function pollStatus(attempt = 0) {
+  try {
+    const r = await fetch(API + "/status");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const s = await r.json();
+    if (s.error) {
+      setStatus("Model failed to load: " + s.error, "err");
+      return;
+    }
+    if (s.ready) {
+      state.ready = true;
+      setStatus("Model ready", "");
+      updatePredictButton();
+      return;
+    }
+    setStatus("Loading the model…" + (state.image ? "" : " you can already pick an image."), "busy");
+    setTimeout(() => pollStatus(0), 1000);
+  } catch (e) {
+    setStatus("Can't reach the server, retrying…", "warn busy");
+    setTimeout(() => pollStatus(attempt + 1), Math.min(1000 * 2 ** attempt, 10000));
+  }
+}
+
+// ---------- image selection ----------
+
+async function loadImage(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    showError("Please choose an image file.");
+    return;
+  }
+  showError("");
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    showError("Could not read that image.");
+    return;
+  }
+  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(bitmap.width * scale));
+  c.height = Math.max(1, Math.round(bitmap.height * scale));
+  c.getContext("2d").drawImage(bitmap, 0, 0, c.width, c.height);
+  bitmap.close();
+
+  state.image = c;
+  els.preview.width = c.width;
+  els.preview.height = c.height;
+  els.preview.getContext("2d").drawImage(c, 0, 0);
+  els.drop.hidden = true;
+  els.picked.hidden = false;
+  els.results.hidden = true;
+  state.data = null;
+  updatePredictButton();
+}
+
+function updatePredictButton() {
+  els.predict.disabled = !state.image || state.busy;
+  els.predict.classList.toggle("busy", state.busy);
+  els.predictText.textContent = state.busy ? "Analyzing…" : "Predict";
+  els.predictHint.textContent =
+    state.image && !state.ready && !state.busy
+      ? "The model is still loading. Predict will wait for it."
+      : "";
+}
+
+function showError(msg) {
+  els.error.textContent = msg;
+  els.error.hidden = !msg;
+}
+
+// ---------- prediction ----------
+
+function decodeMask(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function predict() {
+  if (!state.image || state.busy) return;
+  state.busy = true;
+  showError("");
+  updatePredictButton();
+  try {
+    const blob = await new Promise((res) => state.image.toBlob(res, "image/jpeg", 0.9));
+    const form = new FormData();
+    form.append("file", blob, "image.jpg");
+    const r = await fetch(API + "/predict", { method: "POST", body: form });
+    if (!r.ok) {
+      let detail = "";
+      try { detail = (await r.json()).detail; } catch {}
+      throw new Error(detail || "Server error (HTTP " + r.status + ")");
+    }
+    const data = await r.json();
+    for (const c of data.classes) c.maskData = decodeMask(c.mask);
+    state.data = data;
+    state.ready = true;
+    showResults();
+  } catch (e) {
+    showError(e instanceof TypeError ? "Could not reach the server. Please try again." : e.message);
+  } finally {
+    state.busy = false;
+    updatePredictButton();
+  }
+}
+
+// ---------- rendering ----------
+
+function prepareBase(w, h) {
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(state.image, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h);
+}
+
+// Tints the brightened base image by `weight(cellIndex) -> [score 0..1, [r, g, b]]`.
+function drawTinted(canvas, scoreAt, alpha) {
+  const { width: W, height: H, grid } = state.data;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  const out = ctx.createImageData(W, H);
+  const src = state.base.data, dst = out.data;
+  const colX = new Int32Array(W);
+  for (let x = 0; x < W; x++) colX[x] = Math.min(grid.w - 1, Math.floor((x * grid.w) / W));
+  let p = 0;
+  for (let y = 0; y < H; y++) {
+    const rowOff = Math.min(grid.h - 1, Math.floor((y * grid.h) / H)) * grid.w;
+    for (let x = 0; x < W; x++, p += 4) {
+      const [s, color] = scoreAt(rowOff + colX[x]);
+      const a = alpha * s;
+      for (let ch = 0; ch < 3; ch++) {
+        const base = 0.8 * src[p + ch] + 0.2 * 255;   // brighten so overlays stand out
+        dst[p + ch] = base * (1 - a) + color[ch] * a;
+      }
+      dst[p + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+function drawOverlay() {
+  const predicted = state.data.classes.filter((c) => c.predicted);
+  if (!predicted.length) {
+    drawTinted(els.overlay, () => [0, [0, 0, 0]], 0);
+    return;
+  }
+  // Per patch, the predicted class with the strongest attribution wins.
+  const cells = state.data.grid.h * state.data.grid.w;
+  const best = new Float32Array(cells);
+  const bestColor = new Array(cells).fill(predicted[0].color);
+  for (const c of predicted) {
+    for (let i = 0; i < cells; i++) {
+      const v = c.maskData[i] / 255;
+      if (v > best[i]) { best[i] = v; bestColor[i] = c.color; }
+    }
+  }
+  drawTinted(els.overlay, (i) => [best[i], bestColor[i]], OVERLAY_ALPHA);
+}
+
+function drawSelected() {
+  const c = state.data.classes.find((k) => k.name === state.selected);
+  if (!c) return;
+  els.selectedTitle.textContent = c.name + "  (p = " + c.probability.toFixed(4) + ")";
+  drawTinted(els.selected, (i) => [c.maskData[i] / 255, c.color], 1);
+}
+
+function cell(text, cls) {
+  const td = document.createElement("td");
+  td.textContent = text;
+  if (cls) td.className = cls;
+  return td;
+}
+
+function fillTable(table, rows, withThreshold) {
+  table.replaceChildren();
+  const head = table.createTHead().insertRow();
+  const cols = withThreshold ? ["Habitat", "Probability", "Threshold"] : ["Habitat", "Probability"];
+  for (const name of cols) {
+    const th = document.createElement("th");
+    th.textContent = name;
+    head.appendChild(th);
+  }
+  const body = table.createTBody();
+  if (!rows.length) {
+    const td = body.insertRow().insertCell();
+    td.colSpan = cols.length;
+    td.className = "empty";
+    td.textContent = "No class crossed its threshold.";
+    return;
+  }
+  for (const c of rows) {
+    const tr = body.insertRow();
+    tr.tabIndex = 0;
+    tr.dataset.name = c.name;
+    tr.appendChild(cell(c.name));
+    const bar = document.createElement("td");
+    bar.className = "pbar";
+    const fill = document.createElement("i");
+    fill.style.width = (c.probability * 100).toFixed(1) + "%";
+    const label = document.createElement("b");
+    label.textContent = c.probability.toFixed(4);
+    bar.append(fill, label);
+    tr.appendChild(bar);
+    if (withThreshold) tr.appendChild(cell(c.threshold.toFixed(4), "num"));
+    const select = () => selectClass(c.name);
+    tr.addEventListener("click", select);
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); }
+    });
+  }
+}
+
+function selectClass(name) {
+  state.selected = name;
+  for (const tr of document.querySelectorAll("tbody tr[data-name]")) {
+    tr.classList.toggle("sel", tr.dataset.name === name);
+  }
+  drawSelected();
+}
+
+function showResults() {
+  const { width, height, classes } = state.data;
+  state.base = prepareBase(width, height);
+  const predicted = classes.filter((c) => c.predicted);
+
+  fillTable(els.tPred, predicted, true);
+  fillTable(els.tAll, classes, false);
+
+  els.legend.replaceChildren();
+  for (const c of predicted) {
+    const item = document.createElement("span");
+    const sw = document.createElement("i");
+    sw.className = "swatch";
+    sw.style.background = "rgb(" + c.color.join(",") + ")";
+    item.append(sw, c.name);
+    els.legend.appendChild(item);
+  }
+
+  drawOverlay();
+  els.results.hidden = false;
+  selectClass((predicted[0] || classes[0]).name);
+  els.results.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ---------- wiring ----------
+
+els.drop.addEventListener("click", () => els.file.click());
+els.drop.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); els.file.click(); }
+});
+els.change.addEventListener("click", () => els.file.click());
+els.file.addEventListener("change", () => {
+  loadImage(els.file.files[0]);
+  els.file.value = "";
+});
+for (const ev of ["dragenter", "dragover"]) {
+  els.drop.addEventListener(ev, (e) => { e.preventDefault(); els.drop.classList.add("over"); });
+}
+for (const ev of ["dragleave", "drop"]) {
+  els.drop.addEventListener(ev, (e) => { e.preventDefault(); els.drop.classList.remove("over"); });
+}
+els.drop.addEventListener("drop", (e) => loadImage(e.dataTransfer.files[0]));
+els.predict.addEventListener("click", predict);
+
+pollStatus();
+</script>
+</body>
+</html>

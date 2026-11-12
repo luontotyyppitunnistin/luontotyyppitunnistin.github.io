@@ -117,26 +117,35 @@
   .how-body { margin-top: 16px; max-width: 70ch; white-space: pre-line; }
 
   #results { margin-top: var(--gap); }
-  .views { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--gap); }
-  .views canvas { width: 100%; height: auto; border-radius: 8px; display: block; background: var(--line); }
+  /* one map + the class list; side by side on wide screens (map stays in view while picking classes) */
+  .views { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
+  @media (min-width: 900px) {
+    .views { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; }
+    .map-card { position: sticky; top: 16px; }
+  }
+  .map-card canvas { width: 100%; height: auto; max-height: 80vh; object-fit: contain; border-radius: 8px; display: block; background: var(--line); }
+  #show-predicted { margin-top: 12px; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 0.88rem; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
-  .tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--gap); margin-top: var(--gap); }
+  .list .hint { margin: 0 0 16px; max-width: 70ch; }
 
-  .scroll { max-height: 460px; overflow: auto; }
+  .scroll { max-height: 640px; overflow: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
   th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
   th { position: sticky; top: 0; background: var(--surface); font-weight: 600; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  tbody tr { cursor: pointer; }
-  tbody tr:hover { background: #ffffff; }
+  tbody tr[data-name] { cursor: pointer; }
+  tbody tr[data-name]:hover { background: #ffffff; }
   tbody tr.sel { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
   tbody tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
   .pbar { position: relative; min-width: 90px; }
   .pbar i { position: absolute; inset: 3px auto 3px 0; background: var(--bar); opacity: 0.6; border-radius: 3px; }
   .pbar b { position: relative; font-weight: 400; padding-left: 4px; }
   .empty { color: var(--muted); padding: 8px; }
+  /* group headings of the single list (probability bands) */
+  tr.group td { padding: 14px 8px 6px; font-weight: 600; border-bottom: 2px solid var(--accent); }
+  tr.group.below td { border-bottom-color: var(--line); color: var(--muted); }
 
   /* ---- footer ---- */
   .footer { margin-top: auto; background: var(--accent); color: #ffffff; }
@@ -199,23 +208,17 @@
 
   <section id="results" hidden>
     <div class="views">
-      <div class="card">
-        <h2 data-text="overlayTitle"></h2>
-        <canvas id="overlay"></canvas>
+      <div id="map-card" class="card map-card">
+        <h2 id="map-title"></h2>
+        <canvas id="map"></canvas>
         <div id="legend" class="legend"></div>
+        <button id="show-predicted" class="link arrow-link" type="button" hidden>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span data-text="showPredicted"></span>
+        </button>
       </div>
-      <div class="card">
-        <h2 id="selected-title" data-text="selectedTitle"></h2>
-        <canvas id="selected"></canvas>
-      </div>
-    </div>
-    <div class="tables">
-      <div class="card">
-        <h2 data-text="predictedTitle"></h2>
-        <div class="scroll"><table id="t-pred"></table></div>
-      </div>
-      <div class="card">
-        <h2 data-text="allTitle"></h2>
+      <div class="card list">
+        <h2 data-text="listTitle"></h2>
+        <p class="hint" data-text="listHint"></p>
         <div class="scroll"><table id="t-all"></table></div>
       </div>
     </div>
@@ -236,22 +239,21 @@
 const TEXT = {
   // Page
   heroLead:
-    "Tulkitsee kuvasta todennäköisimmän luontotyypin ja näyttää mitkä alueet kuvasta vaikuttavat ennusteeseen. " +
+    "Tulkitsee kuvasta todennäköisimmän luontotyypin ja havainnollistaa vaikutuskartoilla, mitkä alueet kuvassa viittaavat kuhunkin luokkaan. " +
     "Klikkaa luokan nimeä kummassa tahansa taulukossa luokkakohtaisia vaikutuskarttoja varten.",
   footer: "Ennusteet ovat kokeellisia. Kuvat analysoidaan omalla palvelimellaan, eikä niitä tallenneta tai lähetetä kolmansille osapuolille.",
 
   // How it works (dropdown)
   howTitle: "Kuinka tunnistin toimii?",
   howBody:
-    "Tunnistin käsittelee kuvan Sykessä kehitetyllä konenäköalgoritmilla, joka ensiksi " +
-    "jakaa kuvan pienempiin ruutuihin ja laskee jokaiselle ruudulle ns. _piirrevektorin_. Piirrevektori " +
-    "on kompakti esitysmuoto ruudun visuaalisesta sisällöstä suhteessa koko kuvaan. " +
-    "Kun piirrevektorit on laskettu, ne syötetään luokittelumallille, " +
-    "joka on sovitettu suuren kuvapankin avulla tunnistamaan korrelaatioita visuaalisten piirteiden ja " +
-    "luontotyyppien välillä. Kuvan luontotyypiksi valitaan se luokka, joka sisältää eniten visuaalisia piirteitä, " +
-    "jotka parhaiten edustavat kyseistä luokkaa.\n\n" +
-    "Jokaiselle luokalle voidaan esittää _vaikutuskartta_ kuvanruutujen merkityksestä kyseisen luokan ennustamiseen.",
-
+    "Tunnistin käsittelee kuvan Sykessä kehitetyllä konenäköalgoritmilla. Kuva jaetaan pieniin ruutuihin " +
+    "ja esikoulutettu konenäkömalli laskee koko kuvalle sekä jokaiselle ruudulle _piirrevektorin_, " +
+    "joka on kompakti esitysmuoto kuvan visuaalisesta sisällöstä.\n\n" +
+    "Piirrevektorit syötetään luokittelumallille, joka on sovitettu suuren kuvapankin avulla tunnistamaan " +
+    "visuaalisten piirteiden ja luontotyyppien välisiä yhteyksiä. Malli antaa jokaiselle luontotyypille " +
+    "todennäköisyyden siitä, esiintyykö luontotyyppiä kuvassa.\n\n" +
+    "_Vaikutuskartta_ havainnoillistaa, mitkä kuvanruudut ovat visuaalisesti samanlaisia muiden luontotyyppiä" +
+    "edustavien kuvien kanssa.",
 
   // Upload
   dropAria: "Valitse kuva tai pudota se tähän",
@@ -263,14 +265,21 @@ const TEXT = {
   modelStillLoading: "Mallia ladataan...",
 
   // Results
-  overlayTitle: "Vaikutuskartta (ennustetut luokat)",
+  overlayTitle: "Vaikutuskartta",
   selectedTitle: "Valitun luokan vaikutuskartta",
-  predictedTitle: "Ennustetut luontotyypit",
-  allTitle: "Kaikki luokat",
+  showPredicted: "Näytä kaikki ennustetut",
+  listTitle: "Luontotyypit",
+  listHint:
+    "Todennäköisyys on arvio siitä, että luontotyyppiä esiintyy kuvassa.",
+  groupCertain: "Lähes varmat luontotyypit",
+  groupLikely: "Todennäköiset luontotyypit",
+  groupPossible: "Muut mahdolliset luontotyypit",
+  groupUnlikely: "Epätodennäköiset luontotyypit",
+  showUnlikely: "Näytä",
+  hideUnlikely: "Piilota",
   colClass: "Luontotyyppi",
   colProbability: "Todennäköisyys",
-  colThreshold: "Kynnysarvo",
-  noneAboveThreshold: "Mikään luokka ei ylittänyt kynnysarvoaan.",
+  noneLikely: "Mikään luokka ei ole todennäköinen.",
 
   // Server status
   connecting: "Yhdistetään mallipalvelimeen…",
@@ -309,8 +318,12 @@ for (const el of document.querySelectorAll("[data-aria-label]")) el.setAttribute
 "use strict";
 
 const API = "https://mikkoim--habitat-codebook-api-api.modal.run";
-const MAX_SIDE = 1024;        // keep in sync with the server's MAX_IMAGE_SIDE
+const MAX_SIDE = 1024;        // keep in sync with MAX_SIDE in src/habitat_image/serving.py
 const OVERLAY_ALPHA = 0.7;
+// Probability bands of the result list. Classes from `likely` up count as predicted (overlay, legend); this is the
+// decision threshold of scripts/image/calibrate_predictions.py (DECISION_THRESHOLD). The API's own `threshold` and
+// `predicted` fields are not used.
+const BANDS = { certain: 0.90, likely: 0.35, possible: 0.05 };
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -318,9 +331,9 @@ const els = {
   drop: $("drop"), file: $("file"), picked: $("picked"), preview: $("preview"),
   predict: $("predict"), predictText: $("predict-text"), predictHint: $("predict-hint"),
   change: $("change"), error: $("error"),
-  results: $("results"), overlay: $("overlay"), selected: $("selected"),
-  selectedTitle: $("selected-title"), legend: $("legend"),
-  tPred: $("t-pred"), tAll: $("t-all"),
+  results: $("results"), mapCard: $("map-card"), map: $("map"),
+  mapTitle: $("map-title"), legend: $("legend"), showPredicted: $("show-predicted"),
+  table: $("t-all"),
   howToggle: $("how-toggle"), howBody: $("how-body"),
 };
 
@@ -330,7 +343,7 @@ const state = {
   busy: false,
   data: null,         // last /predict response, masks decoded
   base: null,         // ImageData of the image at response size
-  selected: null,     // selected class name
+  selected: null,     // selected class name; null = show all predicted classes
 };
 
 // ---------- server status: also wakes the Modal container ----------
@@ -393,6 +406,7 @@ async function loadImage(file) {
   els.picked.hidden = false;
   els.results.hidden = true;
   state.data = null;
+  state.selected = null;
   updatePredictButton();
 }
 
@@ -483,10 +497,12 @@ function drawTinted(canvas, scoreAt, alpha) {
   ctx.putImageData(out, 0, 0);
 }
 
+const isPredicted = (c) => c.probability >= BANDS.likely;
+
 function drawOverlay() {
-  const predicted = state.data.classes.filter((c) => c.predicted);
+  const predicted = state.data.classes.filter(isPredicted);
   if (!predicted.length) {
-    drawTinted(els.overlay, () => [0, [0, 0, 0]], 0);
+    drawTinted(els.map, () => [0, [0, 0, 0]], 0);
     return;
   }
   // Per patch, the predicted class with the strongest attribution wins.
@@ -499,14 +515,40 @@ function drawOverlay() {
       if (v > best[i]) { best[i] = v; bestColor[i] = c.color; }
     }
   }
-  drawTinted(els.overlay, (i) => [best[i], bestColor[i]], OVERLAY_ALPHA);
+  drawTinted(els.map, (i) => [best[i], bestColor[i]], OVERLAY_ALPHA);
 }
 
-function drawSelected() {
-  const c = state.data.classes.find((k) => k.name === state.selected);
-  if (!c) return;
-  els.selectedTitle.textContent = c.name + "  (p = " + c.probability.toFixed(4) + ")";
-  drawTinted(els.selected, (i) => [c.maskData[i] / 255, c.color], 1);
+function drawSelected(c) {
+  drawTinted(els.map, (i) => [c.maskData[i] / 255, c.color], 1);
+}
+
+function legendItem(color, label) {
+  const item = document.createElement("span");
+  const sw = document.createElement("i");
+  sw.className = "swatch";
+  sw.style.background = "rgb(" + color.join(",") + ")";
+  item.append(sw, label);
+  els.legend.appendChild(item);
+}
+
+// The single map: all predicted classes by default, or only the selected class. Title and legend follow.
+function renderMap() {
+  const { classes } = state.data;
+  const sel = classes.find((k) => k.name === state.selected);
+  els.legend.replaceChildren();
+  if (sel) {
+    els.mapTitle.textContent = TEXT.selectedTitle;
+    drawSelected(sel);
+    legendItem(sel.color, sel.name + " (" + pct(sel.probability) + ")");
+  } else {
+    els.mapTitle.textContent = TEXT.overlayTitle;
+    drawOverlay();
+    for (const c of classes.filter(isPredicted)) legendItem(c.color, c.name);
+  }
+  els.showPredicted.hidden = !sel;
+  for (const tr of document.querySelectorAll("tbody tr[data-name]")) {
+    tr.classList.toggle("sel", tr.dataset.name === state.selected);
+  }
 }
 
 function cell(text, cls) {
@@ -516,76 +558,114 @@ function cell(text, cls) {
   return td;
 }
 
-function fillTable(table, rows, withThreshold) {
+// Probability as a Finnish percentage with one decimal ("97,3 %").
+function pct(p) {
+  return (p * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " %";
+}
+
+function groupRow(body, title, below) {
+  const tr = body.insertRow();
+  tr.className = "group" + (below ? " below" : "");
+  const td = tr.insertCell();
+  td.colSpan = 2;
+  td.textContent = title;
+  return td;
+}
+
+function probabilityRow(body, c) {
+  const tr = body.insertRow();
+  tr.tabIndex = 0;
+  tr.dataset.name = c.name;
+  tr.appendChild(cell(c.name));
+  const bar = document.createElement("td");
+  bar.className = "pbar";
+  const fill = document.createElement("i");
+  fill.style.width = (c.probability * 100).toFixed(1) + "%";
+  const label = document.createElement("b");
+  label.textContent = pct(c.probability);
+  bar.append(fill, label);
+  tr.appendChild(bar);
+  const select = () => selectClass(c.name);
+  tr.addEventListener("click", select);
+  tr.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); }
+  });
+}
+
+// One list sorted by probability, in four bands. The classes are sorted by the API, so each band is a run of rows.
+// Empty bands are left out, except the "likely" one (the main list), which says so when it is empty.
+// The classes below the lowest band are collapsed.
+function fillList(table, classes) {
   table.replaceChildren();
   const head = table.createTHead().insertRow();
-  const cols = withThreshold
-    ? [TEXT.colClass, TEXT.colProbability, TEXT.colThreshold]
-    : [TEXT.colClass, TEXT.colProbability];
-  for (const name of cols) {
+  for (const name of [TEXT.colClass, TEXT.colProbability]) {
     const th = document.createElement("th");
     th.textContent = name;
     head.appendChild(th);
   }
   const body = table.createTBody();
-  if (!rows.length) {
-    const td = body.insertRow().insertCell();
-    td.colSpan = cols.length;
-    td.className = "empty";
-    td.textContent = TEXT.noneAboveThreshold;
-    return;
+  const band = (lo, hi) => classes.filter((c) => c.probability >= lo && (hi === undefined || c.probability < hi));
+  const certain = band(BANDS.certain);
+  const likely = band(BANDS.likely, BANDS.certain);
+  const possible = band(BANDS.possible, BANDS.likely);
+  const unlikely = classes.filter((c) => c.probability < BANDS.possible);
+
+  if (certain.length) {
+    groupRow(body, TEXT.groupCertain, false);
+    for (const c of certain) probabilityRow(body, c);
   }
-  for (const c of rows) {
-    const tr = body.insertRow();
-    tr.tabIndex = 0;
-    tr.dataset.name = c.name;
-    tr.appendChild(cell(c.name));
-    const bar = document.createElement("td");
-    bar.className = "pbar";
-    const fill = document.createElement("i");
-    fill.style.width = (c.probability * 100).toFixed(1) + "%";
-    const label = document.createElement("b");
-    label.textContent = c.probability.toFixed(4);
-    bar.append(fill, label);
-    tr.appendChild(bar);
-    if (withThreshold) tr.appendChild(cell(c.threshold.toFixed(4), "num"));
-    const select = () => selectClass(c.name);
-    tr.addEventListener("click", select);
-    tr.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); }
+  groupRow(body, TEXT.groupLikely, false);
+  if (!likely.length) {
+    const td = body.insertRow().insertCell();
+    td.colSpan = 2;
+    td.className = "empty";
+    td.textContent = TEXT.noneLikely;
+  }
+  for (const c of likely) probabilityRow(body, c);
+  if (possible.length) {
+    groupRow(body, TEXT.groupPossible, true);
+    for (const c of possible) probabilityRow(body, c);
+  }
+  if (unlikely.length) {
+    const cellEl = groupRow(body, TEXT.groupUnlikely, true);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "link";
+    button.textContent = TEXT.showUnlikely;
+    button.setAttribute("aria-expanded", "false");
+    cellEl.append(" ", button);
+    const rows = [];
+    for (const c of unlikely) {
+      probabilityRow(body, c);
+      const tr = body.lastChild;
+      tr.hidden = true;
+      rows.push(tr);
+    }
+    button.addEventListener("click", () => {
+      const open = button.getAttribute("aria-expanded") !== "true";
+      button.setAttribute("aria-expanded", String(open));
+      button.textContent = open ? TEXT.hideUnlikely : TEXT.showUnlikely;
+      for (const tr of rows) tr.hidden = !open;
     });
   }
 }
 
+// Clicking the selected class again goes back to the predicted-classes map.
 function selectClass(name) {
-  state.selected = name;
-  for (const tr of document.querySelectorAll("tbody tr[data-name]")) {
-    tr.classList.toggle("sel", tr.dataset.name === name);
-  }
-  drawSelected();
+  state.selected = state.selected === name ? null : name;
+  renderMap();
+  // stacked (narrow) layout: bring the map into view if the list was tapped far below it
+  if (els.mapCard.getBoundingClientRect().top < 0) els.mapCard.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function showResults() {
   const { width, height, classes } = state.data;
   state.base = prepareBase(width, height);
-  const predicted = classes.filter((c) => c.predicted);
+  state.selected = null;
 
-  fillTable(els.tPred, predicted, true);
-  fillTable(els.tAll, classes, false);
-
-  els.legend.replaceChildren();
-  for (const c of predicted) {
-    const item = document.createElement("span");
-    const sw = document.createElement("i");
-    sw.className = "swatch";
-    sw.style.background = "rgb(" + c.color.join(",") + ")";
-    item.append(sw, c.name);
-    els.legend.appendChild(item);
-  }
-
-  drawOverlay();
+  fillList(els.table, classes);
+  renderMap();
   els.results.hidden = false;
-  selectClass((predicted[0] || classes[0]).name);
   els.results.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -608,6 +688,7 @@ for (const ev of ["dragleave", "drop"]) {
 }
 els.drop.addEventListener("drop", (e) => loadImage(e.dataTransfer.files[0]));
 els.predict.addEventListener("click", predict);
+els.showPredicted.addEventListener("click", () => { state.selected = null; renderMap(); });
 els.howToggle.addEventListener("click", () => {
   const open = els.howToggle.getAttribute("aria-expanded") !== "true";
   els.howToggle.setAttribute("aria-expanded", String(open));

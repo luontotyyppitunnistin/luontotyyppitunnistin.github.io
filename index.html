@@ -126,9 +126,16 @@
   .map-card canvas { width: 100%; height: auto; max-height: 80vh; object-fit: contain; border-radius: 8px; display: block; background: var(--line); }
   #show-predicted { margin-top: 12px; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 0.88rem; }
-  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  /* legend entries are buttons: tap one to show that class on its own map (tap again to go back) */
+  .legend button {
+    display: inline-flex; align-items: center; gap: 6px; font: inherit; color: inherit; text-align: left;
+    background: none; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; margin: -4px -8px; cursor: pointer;
+  }
+  .legend button:hover { background: #ffffff; }
+  .legend button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+  .legend button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
   .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
-  .list .hint { margin: 0 0 16px; max-width: 70ch; }
+  .list .hint, .map-card .hint { margin: 0 0 16px; max-width: 70ch; }
 
   .scroll { max-height: 640px; overflow: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
@@ -210,6 +217,7 @@
     <div class="views">
       <div id="map-card" class="card map-card">
         <h2 id="map-title"></h2>
+        <p class="hint" data-text="mapHint"></p>
         <canvas id="map"></canvas>
         <div id="legend" class="legend"></div>
         <button id="show-predicted" class="link arrow-link" type="button" hidden>
@@ -246,13 +254,13 @@ const TEXT = {
   // How it works (dropdown)
   howTitle: "Kuinka tunnistin toimii?",
   howBody:
-    "Tunnistin käsittelee kuvan Sykessä kehitetyllä konenäköalgoritmilla. Kuva jaetaan pieniin ruutuihin " +
+    "Tunnistin käsittelee kuvan Sykessä kehitetyllä konenäkömallilla. Kuva jaetaan pieniin ruutuihin " +
     "ja esikoulutettu konenäkömalli laskee koko kuvalle sekä jokaiselle ruudulle _piirrevektorin_, " +
     "joka on kompakti esitysmuoto kuvan visuaalisesta sisällöstä.\n\n" +
     "Piirrevektorit syötetään luokittelumallille, joka on sovitettu suuren kuvapankin avulla tunnistamaan " +
     "visuaalisten piirteiden ja luontotyyppien välisiä yhteyksiä. Malli antaa jokaiselle luontotyypille " +
     "todennäköisyyden siitä, esiintyykö luontotyyppiä kuvassa.\n\n" +
-    "_Vaikutuskartta_ havainnoillistaa, mitkä kuvanruudut ovat visuaalisesti samanlaisia muiden luontotyyppiä" +
+    "_Vaikutuskartta_ havainnoillistaa, mitkä elementit kuvassa ovat visuaalisesti samanlaisia muiden luontotyyppiä " +
     "edustavien kuvien kanssa.",
 
   // Upload
@@ -267,6 +275,9 @@ const TEXT = {
   // Results
   overlayTitle: "Vaikutuskartta",
   selectedTitle: "Valitun luokan vaikutuskartta",
+  mapHint:
+    "Värit näyttävät, mitkä alueet kuvassa yhdistetään mihinkin luontotyyppiin. " +
+    "Valitse luokka luettelosta nähdäksesi vain sen vaikutusalueet.",
   showPredicted: "Näytä kaikki ennustetut",
   listTitle: "Luontotyypit",
   listHint:
@@ -522,12 +533,15 @@ function drawSelected(c) {
   drawTinted(els.map, (i) => [c.maskData[i] / 255, c.color], 1);
 }
 
-function legendItem(color, label) {
-  const item = document.createElement("span");
+function legendItem(c, label, pressed) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.setAttribute("aria-pressed", String(pressed));
   const sw = document.createElement("i");
   sw.className = "swatch";
-  sw.style.background = "rgb(" + color.join(",") + ")";
+  sw.style.background = "rgb(" + c.color.join(",") + ")";
   item.append(sw, label);
+  item.addEventListener("click", () => selectClass(c.name));
   els.legend.appendChild(item);
 }
 
@@ -539,11 +553,14 @@ function renderMap() {
   if (sel) {
     els.mapTitle.textContent = TEXT.selectedTitle;
     drawSelected(sel);
-    legendItem(sel.color, sel.name + " (" + pct(sel.probability) + ")");
   } else {
     els.mapTitle.textContent = TEXT.overlayTitle;
     drawOverlay();
-    for (const c of classes.filter(isPredicted)) legendItem(c.color, c.name);
+  }
+  // The legend lists the predicted classes in both views (plus the selected class if it is not one of them),
+  // so another class can be picked straight from it.
+  for (const c of classes.filter((k) => isPredicted(k) || k === sel)) {
+    legendItem(c, sel === c ? c.name + " (" + pct(c.probability) + ")" : c.name, sel === c);
   }
   els.showPredicted.hidden = !sel;
   for (const tr of document.querySelectorAll("tbody tr[data-name]")) {
